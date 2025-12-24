@@ -37,7 +37,7 @@ The primary goal is to provide DevOps teams and system administrators with an in
 ### Component Structure
 
 ```
-src/
+frontend/src/
 ├── components/
 │   ├── PlayCard.tsx        # Displays individual play with task summaries
 │   ├── PlayHeader.tsx      # (Legacy) Displays play title and execution date
@@ -140,30 +140,35 @@ type PlayStatus = 'ok' | 'changed' | 'failed';
 
 ### Getting Started
 
-1. **Install Dependencies**
+1. **Navigate to Frontend Directory**
+   ```bash
+   cd frontend
+   ```
+
+2. **Install Dependencies**
    ```bash
    npm install
    ```
 
-2. **Run Linting**
+3. **Run Linting**
    ```bash
    npm run lint
    ```
    Checks code quality with ESLint
 
-3. **Start Development Server**
+4. **Start Development Server**
    ```bash
    npm run dev
    ```
    Server starts at `http://localhost:5173`
 
-4. **Build for Production**
+5. **Build for Production**
    ```bash
    npm run build
    ```
    Outputs to `dist/` directory
 
-5. **Preview Production Build**
+6. **Preview Production Build**
    ```bash
    npm run preview
    ```
@@ -177,7 +182,7 @@ type PlayStatus = 'ok' | 'changed' | 'failed';
 
 ### Mock Data
 
-The first iteration uses hardcoded mock data in [src/App.tsx](src/App.tsx):
+The first iteration uses hardcoded mock data in [frontend/src/App.tsx](frontend/src/App.tsx):
 - 5 example hosts with realistic hostnames (web-01, web-02, db-01, lb-01, cache-01)
 - Each host has 1-3 plays with descriptive names
 - Mix of OK, Changed, and Failed play statuses
@@ -229,26 +234,26 @@ The first iteration uses hardcoded mock data in [src/App.tsx](src/App.tsx):
 ## File Organization
 
 ### Configuration Files
-- [package.json](package.json) - Dependencies and scripts
-- [vite.config.ts](vite.config.ts) - Vite build configuration
-- [eslint.config.js](eslint.config.js) - ESLint configuration with TypeScript support
-- [tsconfig.json](tsconfig.json) - TypeScript project references
-- [tsconfig.app.json](tsconfig.app.json) - App TypeScript config
-- [tsconfig.node.json](tsconfig.node.json) - Node scripts TypeScript config
-- [tailwind.config.js](tailwind.config.js) - Tailwind CSS configuration
-- [postcss.config.js](postcss.config.js) - PostCSS plugins
+- [frontend/package.json](frontend/package.json) - Dependencies and scripts
+- [frontend/vite.config.ts](frontend/vite.config.ts) - Vite build configuration
+- [frontend/eslint.config.js](frontend/eslint.config.js) - ESLint configuration with TypeScript support
+- [frontend/tsconfig.json](frontend/tsconfig.json) - TypeScript project references
+- [frontend/tsconfig.app.json](frontend/tsconfig.app.json) - App TypeScript config
+- [frontend/tsconfig.node.json](frontend/tsconfig.node.json) - Node scripts TypeScript config
+- [frontend/tailwind.config.js](frontend/tailwind.config.js) - Tailwind CSS configuration
+- [frontend/postcss.config.js](frontend/postcss.config.js) - PostCSS plugins
 - [.gitignore](.gitignore) - Git ignore patterns
 
 ### Source Files
-- [src/main.tsx](src/main.tsx) - React application entry point
-- [src/App.tsx](src/App.tsx) - Main application component with mock host data
-- [src/index.css](src/index.css) - Global styles and Tailwind directives
-- [src/vite-env.d.ts](src/vite-env.d.ts) - Vite environment type declarations
-- [src/types/ansible.ts](src/types/ansible.ts) - TypeScript type definitions (Host, Play, TaskSummary)
-- [src/components/PlayCard.tsx](src/components/PlayCard.tsx) - Individual play card with task summaries
-- [src/components/PlayHeader.tsx](src/components/PlayHeader.tsx) - (Legacy) Play title and date component
-- [src/components/ServerCard.tsx](src/components/ServerCard.tsx) - Host card displaying multiple plays
-- [src/components/StatusBadge.tsx](src/components/StatusBadge.tsx) - Status indicator badge
+- [frontend/src/main.tsx](frontend/src/main.tsx) - React application entry point
+- [frontend/src/App.tsx](frontend/src/App.tsx) - Main application component with mock host data
+- [frontend/src/index.css](frontend/src/index.css) - Global styles and Tailwind directives
+- [frontend/src/vite-env.d.ts](frontend/src/vite-env.d.ts) - Vite environment type declarations
+- [frontend/src/types/ansible.ts](frontend/src/types/ansible.ts) - TypeScript type definitions (Host, Play, TaskSummary)
+- [frontend/src/components/PlayCard.tsx](frontend/src/components/PlayCard.tsx) - Individual play card with task summaries
+- [frontend/src/components/PlayHeader.tsx](frontend/src/components/PlayHeader.tsx) - (Legacy) Play title and date component
+- [frontend/src/components/ServerCard.tsx](frontend/src/components/ServerCard.tsx) - Host card displaying multiple plays
+- [frontend/src/components/StatusBadge.tsx](frontend/src/components/StatusBadge.tsx) - Status indicator badge
 
 ## Design Decisions
 
@@ -313,6 +318,9 @@ The project includes comprehensive code quality tooling:
 
 **Running Quality Checks**
 ```bash
+# Navigate to frontend directory
+cd frontend
+
 # Run ESLint
 npm run lint
 
@@ -350,12 +358,13 @@ npm run dev -- --port 3000
 ### TypeScript Errors
 Ensure all dependencies are installed:
 ```bash
+cd frontend
 rm -rf node_modules package-lock.json
 npm install
 ```
 
 ### Tailwind Styles Not Applying
-Check that [src/index.css](src/index.css) is imported in [src/main.tsx](src/main.tsx) and contains the Tailwind directives.
+Check that [frontend/src/index.css](frontend/src/index.css) is imported in [frontend/src/main.tsx](frontend/src/main.tsx) and contains the Tailwind directives.
 
 ## License
 
