@@ -5,12 +5,21 @@ const getBackendUri = (): string => {
 };
 
 export const fetchLog = async (logId: string): Promise<Log> => {
-  const response = await fetch(`${getBackendUri()}/api/logs/${logId}/`);
+  const backendUri = getBackendUri();
+  let response: Response;
+
+  try {
+    response = await fetch(`${backendUri}/api/logs/${logId}/`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    throw new Error(`Failed to connect to backend at ${backendUri}: ${message}`);
+  }
+
   if (!response.ok) {
     if (response.status === 404) {
       throw new Error('Log not found');
     }
-    throw new Error(`Failed to fetch log: ${response.status}`);
+    throw new Error(`Failed to fetch log: ${response.status} ${response.statusText}`);
   }
   return response.json();
 };
