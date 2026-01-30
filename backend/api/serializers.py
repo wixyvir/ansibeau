@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Log, Host, Play
+from .models import Log, Host, Play, Task
 
 
 class TaskSummarySerializer(serializers.Serializer):
@@ -10,14 +10,59 @@ class TaskSummarySerializer(serializers.Serializer):
     failed = serializers.IntegerField()
 
 
-class PlaySerializer(serializers.ModelSerializer):
-    """Serializer for Play model matching the frontend Play interface."""
+class TaskSerializer(serializers.ModelSerializer):
+    """Serializer for Task model with execution details."""
+
+    class Meta:
+        model = Task
+        fields = ["id", "name", "order", "line_number", "status", "failure_message"]
+        read_only_fields = ["id"]
+
+
+class PlayListSerializer(serializers.ModelSerializer):
+    """Serializer for Play model without tasks_list (for log listing routes)."""
 
     tasks = TaskSummarySerializer(read_only=True)
 
     class Meta:
         model = Play
-        fields = ["id", "name", "date", "status", "tasks", "line_number", "order"]
+        fields = [
+            "id",
+            "name",
+            "date",
+            "status",
+            "tasks",
+            "line_number",
+            "order",
+        ]
+        read_only_fields = ["id"]
+
+    def to_representation(self, instance):
+        """Convert datetime to ISO string format for frontend compatibility."""
+        representation = super().to_representation(instance)
+        if representation.get("date"):
+            representation["date"] = instance.date.isoformat()
+        return representation
+
+
+class PlaySerializer(serializers.ModelSerializer):
+    """Serializer for Play model with full task details."""
+
+    tasks = TaskSummarySerializer(read_only=True)
+    tasks_list = TaskSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Play
+        fields = [
+            "id",
+            "name",
+            "date",
+            "status",
+            "tasks",
+            "tasks_list",
+            "line_number",
+            "order",
+        ]
         read_only_fields = ["id"]
 
     def to_representation(self, instance):
@@ -30,9 +75,9 @@ class PlaySerializer(serializers.ModelSerializer):
 
 
 class HostSerializer(serializers.ModelSerializer):
-    """Serializer for Host model matching the frontend Host interface."""
+    """Serializer for Host model without tasks_list in plays."""
 
-    plays = PlaySerializer(many=True, read_only=True)
+    plays = PlayListSerializer(many=True, read_only=True)
 
     class Meta:
         model = Host
