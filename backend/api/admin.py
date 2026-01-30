@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.urls import path
 from django.utils.html import format_html
 
-from .models import Host, Log, Play
+from .models import Host, Log, Play, Task
 from .services.log_parser import LogParserService, determine_status
 
 
@@ -153,6 +153,17 @@ class PlayInline(admin.TabularInline):
     ordering = ["-date"]
 
 
+class TaskInline(admin.TabularInline):
+    """Inline admin for tasks within a play."""
+
+    model = Task
+    fields = ["id", "name", "order", "status", "failure_message"]
+    readonly_fields = ["id"]
+    extra = 0
+    can_delete = True
+    ordering = ["order"]
+
+
 # Model Admin Classes
 
 
@@ -227,11 +238,14 @@ class LogAdmin(admin.ModelAdmin):
             # Create the log and related entities
             log = Log.objects.create(title=title, raw_content=raw_content)
 
+            # Build a map of (hostname, play_name) -> Play for task association
+            play_map = {}
+
             for parsed_host in result.hosts:
                 host = Host.objects.create(log=log, hostname=parsed_host.hostname)
 
                 for parsed_play in result.plays:
-                    Play.objects.create(
+                    play = Play.objects.create(
                         host=host,
                         name=parsed_play.name,
                         date=result.timestamp,
@@ -242,6 +256,21 @@ class LogAdmin(admin.ModelAdmin):
                         line_number=parsed_play.line_number,
                         order=parsed_play.order,
                     )
+                    play_map[(parsed_host.hostname, parsed_play.name)] = play
+
+            # Create Task entities from parsed tasks
+            for parsed_task in result.tasks:
+                for task_result in parsed_task.results:
+                    play = play_map.get((task_result.hostname, parsed_task.play_name))
+                    if play:
+                        Task.objects.create(
+                            play=play,
+                            name=parsed_task.name,
+                            order=parsed_task.order,
+                            line_number=parsed_task.line_number,
+                            status=task_result.status,
+                            failure_message=task_result.message,
+                        )
 
             # Success - show result
             total_plays = sum(host.plays.count() for host in log.hosts.all())
@@ -413,6 +442,7 @@ class PlayAdmin(admin.ModelAdmin):
     readonly_fields = ["id", "host", "created_at", "updated_at", "total_tasks"]
     date_hierarchy = "date"
     ordering = ["-date"]
+    inlines = [TaskInline]
     fieldsets = [
         ("Play Information", {"fields": ["id", "host", "name", "date", "status"]}),
         (
@@ -494,6 +524,82 @@ class PlayAdmin(admin.ModelAdmin):
         return obj.tasks_ok + obj.tasks_changed + obj.tasks_failed
 
     total_tasks.short_description = "Total Tasks"
+
+
+@admin.register(Task)
+class TaskAdmin(admin.ModelAdmin):
+    """Admin interface for Task model."""
+
+    list_display = [
+        "name",
+        "play_name",
+        "hostname",
+        "order",
+        "status_badge",
+        "has_failure_message",
+    ]
+    list_filter = ["status", "play__host__log", "play__host"]
+    search_fields = ["name", "play__name", "play__host__hostname"]
+    readonly_fields = ["id", "created_at"]
+    ordering = ["play", "order"]
+    fieldsets = [
+        (
+            "Task Information",
+            {"fields": ["id", "play", "name", "order", "line_number"]},
+        ),
+        ("Execution Result", {"fields": ["status", "failure_message"]}),
+        ("Metadata", {"fields": ["created_at"], "classes": ["collapse"]}),
+    ]
+
+    def get_queryset(self, request):
+        """Optimize queryset with select_related."""
+        qs = super().get_queryset(request)
+        qs = qs.select_related("play__host__log")
+        return qs
+
+    def play_name(self, obj):
+        """Display play name."""
+        return obj.play.name
+
+    play_name.short_description = "Play"
+
+    def hostname(self, obj):
+        """Display hostname."""
+        return obj.play.host.hostname
+
+    hostname.short_description = "Host"
+
+    def status_badge(self, obj):
+        """Display colored status badge."""
+        colors = {
+            "ok": {"bg": "#064e3b", "fg": "#10b981", "text": "OK"},
+            "changed": {"bg": "#1e3a5f", "fg": "#60a5fa", "text": "CHANGED"},
+            "failed": {"bg": "#7f1d1d", "fg": "#ef4444", "text": "FAILED"},
+            "fatal": {"bg": "#7f1d1d", "fg": "#ef4444", "text": "FATAL"},
+            "skipping": {"bg": "#374151", "fg": "#9ca3af", "text": "SKIPPED"},
+            "unreachable": {"bg": "#7f1d1d", "fg": "#ef4444", "text": "UNREACHABLE"},
+            "ignored": {"bg": "#374151", "fg": "#9ca3af", "text": "IGNORED"},
+            "rescued": {"bg": "#713f12", "fg": "#fbbf24", "text": "RESCUED"},
+        }
+        color = colors.get(
+            obj.status, {"bg": "#333", "fg": "#fff", "text": obj.status.upper()}
+        )
+        return format_html(
+            '<span style="background: {}; color: {}; padding: 3px 10px; '
+            'border-radius: 4px; font-weight: 600; font-size: 11px;">{}</span>',
+            color["bg"],
+            color["fg"],
+            color["text"],
+        )
+
+    status_badge.short_description = "Status"
+
+    def has_failure_message(self, obj):
+        """Display if task has failure message."""
+        return bool(obj.failure_message)
+
+    has_failure_message.boolean = True
+    has_failure_message.short_description = "Has Error"
 
 
 # Admin Site Customization

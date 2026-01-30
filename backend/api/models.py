@@ -89,3 +89,44 @@ class Play(models.Model):
             "changed": self.tasks_changed,
             "failed": self.tasks_failed,
         }
+
+
+class Task(models.Model):
+    """Represents an individual Ansible task execution within a play on a host."""
+
+    STATUS_CHOICES = [
+        ("ok", "OK"),
+        ("changed", "Changed"),
+        ("failed", "Failed"),
+        ("fatal", "Fatal"),
+        ("skipping", "Skipped"),
+        ("unreachable", "Unreachable"),
+        ("ignored", "Ignored"),
+        ("rescued", "Rescued"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    play = models.ForeignKey(Play, on_delete=models.CASCADE, related_name="tasks_list")
+    name = models.CharField(max_length=500)
+    order = models.PositiveIntegerField(default=0, help_text="Task order (0-indexed)")
+    line_number = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Line number in raw log where task starts"
+    )
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, db_index=True)
+    failure_message = models.TextField(
+        blank=True, null=True, help_text="Error message when task fails"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order"]
+        verbose_name = "Task"
+        verbose_name_plural = "Tasks"
+        indexes = [
+            models.Index(fields=["play", "order"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.status}) - {self.play.host.hostname}"

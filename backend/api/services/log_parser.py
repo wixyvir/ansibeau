@@ -35,12 +35,33 @@ class ParsedPlay:
 
 
 @dataclass
+class ParsedTaskResult:
+    """Represents a single task execution result on a host."""
+
+    hostname: str
+    status: str  # ok, changed, failed, fatal, skipping, unreachable, ignored, rescued
+    message: Optional[str] = None
+
+
+@dataclass
+class ParsedTask:
+    """Represents a parsed task from Ansible output."""
+
+    name: str
+    order: int
+    play_name: str
+    line_number: Optional[int] = None
+    results: list[ParsedTaskResult] = field(default_factory=list)
+
+
+@dataclass
 class ParseResult:
     """Result of parsing an Ansible log."""
 
     success: bool
     hosts: list[ParsedHost] = field(default_factory=list)
     plays: list[ParsedPlay] = field(default_factory=list)
+    tasks: list[ParsedTask] = field(default_factory=list)
     timestamp: Optional[datetime] = None
     error: Optional[str] = None
     detail: Optional[str] = None
@@ -60,6 +81,8 @@ class LogParserService:
     TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} \|")
     # Pattern to match PLAY lines and extract play name
     PLAY_PATTERN = re.compile(r"PLAY \[([^\]]+)\]")
+    # Pattern to match TASK lines and extract task name
+    TASK_PATTERN = re.compile(r"TASK \[([^\]]+)\]")
 
     def parse(self, raw_content: str) -> ParseResult:
         """
@@ -121,7 +144,7 @@ class LogParserService:
             content: Raw Ansible playbook stdout output
 
         Returns:
-            ParseResult with extracted hosts and plays
+            ParseResult with extracted hosts, plays, and tasks
         """
         parser = Play(play_output=content)
 
@@ -133,6 +156,9 @@ class LogParserService:
 
         # Extract hosts from recap
         hosts = self._extract_hosts_from_recap(parser)
+
+        # Extract tasks from plays
+        tasks = self._extract_tasks_from_plays(parser, content)
 
         if not hosts:
             return ParseResult(
@@ -146,6 +172,7 @@ class LogParserService:
             success=True,
             hosts=hosts,
             plays=plays,
+            tasks=tasks,
             timestamp=None,  # Raw stdout doesn't have timestamps
             parser_type="play",
         )
@@ -158,7 +185,7 @@ class LogParserService:
             content: Timestamped log file content
 
         Returns:
-            ParseResult with extracted hosts and plays
+            ParseResult with extracted hosts, plays, and tasks
         """
         # Logs class requires a file path, so we write to a temp file
         with tempfile.NamedTemporaryFile(
@@ -171,9 +198,10 @@ class LogParserService:
         try:
             log_parser = Logs(log_file=tmp_path)
 
-            # Collect all hosts and plays from all parsed plays
+            # Collect all hosts, plays, and tasks from all parsed plays
             all_hosts: dict[str, ParsedHost] = {}
             all_play_names: list[str] = []
+            all_tasks: list[ParsedTask] = []
 
             for play in log_parser.plays:
                 # Get play names
@@ -198,6 +226,10 @@ class LogParserService:
                     else:
                         all_hosts[host.hostname] = host
 
+                # Extract tasks from this play
+                tasks = self._extract_tasks_from_plays(play, content)
+                all_tasks.extend(tasks)
+
             if not all_hosts:
                 return ParseResult(
                     success=False,
@@ -213,6 +245,7 @@ class LogParserService:
                 success=True,
                 hosts=list(all_hosts.values()),
                 plays=plays,
+                tasks=all_tasks,
                 timestamp=log_parser.last_processed_time,
                 parser_type="logs",
             )
@@ -295,6 +328,75 @@ class LogParserService:
             hosts.append(host)
 
         return hosts
+
+    def _extract_tasks_from_plays(self, parser: Play, content: str) -> list[ParsedTask]:
+        """
+        Extract task-level data from parsed plays.
+
+        Args:
+            parser: Play parser instance with parsed data
+            content: Raw log content for line number extraction
+
+        Returns:
+            List of ParsedTask objects with executions per host
+        """
+        tasks: list[ParsedTask] = []
+        task_order = 0
+
+        # parser.plays() returns Dict[play_name, Dict[task_name, Tasks]]
+        plays_data = parser.plays()
+
+        for play_name, play_tasks in plays_data.items():
+            for task_name, task_obj in play_tasks.items():
+                results: list[ParsedTaskResult] = []
+
+                # task_obj.results returns List[{host, status, failure_message}]
+                task_results = getattr(task_obj, "results", [])
+                for result in task_results:
+                    hostname = result.get("host", "")
+                    status = result.get("status", "ok")
+                    message = result.get("failure_message") or None
+
+                    results.append(
+                        ParsedTaskResult(
+                            hostname=hostname,
+                            status=status,
+                            message=message,
+                        )
+                    )
+
+                # Find line number for this task
+                line_number = self._find_task_line_number(content, task_name)
+
+                tasks.append(
+                    ParsedTask(
+                        name=task_name,
+                        order=task_order,
+                        play_name=play_name,
+                        line_number=line_number,
+                        results=results,
+                    )
+                )
+                task_order += 1
+
+        return tasks
+
+    def _find_task_line_number(self, content: str, task_name: str) -> Optional[int]:
+        """
+        Find the line number where a task is defined.
+
+        Args:
+            content: Raw log content
+            task_name: Name of the task to find
+
+        Returns:
+            Line number (1-indexed) or None if not found
+        """
+        for line_num, line in enumerate(content.split("\n"), start=1):
+            match = self.TASK_PATTERN.search(line)
+            if match and match.group(1) == task_name:
+                return line_num
+        return None
 
 
 def determine_status(host: ParsedHost) -> str:

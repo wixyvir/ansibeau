@@ -2,8 +2,13 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import Host, Log, Play
-from .serializers import HostSerializer, LogCreateSerializer, LogSerializer
+from .models import Host, Log, Play, Task
+from .serializers import (
+    HostSerializer,
+    LogCreateSerializer,
+    LogSerializer,
+    TaskSerializer,
+)
 from .services.log_parser import LogParserService, determine_status
 
 
@@ -68,12 +73,15 @@ class LogViewSet(
             )
 
         # Create Host and Play entities from parsed data
+        # Build a map of (hostname, play_name) -> Play for task association
+        play_map = {}  # (hostname, play_name) -> Play instance
+
         for parsed_host in result.hosts:
             host = Host.objects.create(log=log, hostname=parsed_host.hostname)
 
             # Create a Play for each parsed play with line number and order
             for parsed_play in result.plays:
-                Play.objects.create(
+                play = Play.objects.create(
                     host=host,
                     name=parsed_play.name,
                     date=result.timestamp,
@@ -84,6 +92,21 @@ class LogViewSet(
                     line_number=parsed_play.line_number,
                     order=parsed_play.order,
                 )
+                play_map[(parsed_host.hostname, parsed_play.name)] = play
+
+        # Create Task entities from parsed tasks
+        for parsed_task in result.tasks:
+            for task_result in parsed_task.results:
+                play = play_map.get((task_result.hostname, parsed_task.play_name))
+                if play:
+                    Task.objects.create(
+                        play=play,
+                        name=parsed_task.name,
+                        order=parsed_task.order,
+                        line_number=parsed_task.line_number,
+                        status=task_result.status,
+                        failure_message=task_result.message,
+                    )
 
         # Refresh log to include newly created hosts and plays
         log.refresh_from_db()
@@ -103,4 +126,51 @@ class LogViewSet(
         log = self.get_object()
         hosts = Host.objects.filter(log=log).prefetch_related("plays")
         serializer = HostSerializer(hosts, many=True)
+        return Response(serializer.data)
+
+
+class PlayViewSet(viewsets.GenericViewSet):
+    """
+    ViewSet for Play-related operations.
+
+    tasks: List all tasks for a specific play with optional status filtering
+    """
+
+    queryset = Play.objects.all()
+
+    @action(detail=True, methods=["get"])
+    def tasks(self, request, pk=None):
+        """
+        List all tasks for a specific play.
+
+        Query Parameters:
+            status (optional): Filter by task status
+                (ok|changed|failed|skipping|unreachable|ignored|rescued)
+
+        Returns:
+            List of tasks ordered by execution order.
+            Returns 400 if invalid status provided.
+            Returns 404 if play UUID not found.
+        """
+        play = self.get_object()
+        tasks = Task.objects.filter(play=play).order_by("order")
+
+        status_filter = request.query_params.get("status")
+        if status_filter:
+            valid_statuses = [choice[0] for choice in Task.STATUS_CHOICES]
+            if status_filter not in valid_statuses:
+                return Response(
+                    {
+                        "error": f"Invalid status '{status_filter}'",
+                        "valid_statuses": valid_statuses,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Include both "failed" and "fatal" when filtering on "failed"
+            if status_filter == "failed":
+                tasks = tasks.filter(status__in=["failed", "fatal"])
+            else:
+                tasks = tasks.filter(status=status_filter)
+
+        serializer = TaskSerializer(tasks, many=True)
         return Response(serializer.data)
