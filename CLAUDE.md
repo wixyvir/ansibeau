@@ -75,13 +75,18 @@ ansible-ui/
 ```
 frontend/src/
 ├── components/
+│   ├── CollapsibleTaskSection.tsx  # Expandable task list with lazy loading
 │   ├── PlayCard.tsx        # Displays individual play with task summaries
 │   ├── PlayHeader.tsx      # (Legacy) Displays play title and execution date
 │   ├── ServerCard.tsx      # Host card displaying multiple plays
-│   └── StatusBadge.tsx     # Reusable status indicator badge
+│   └── StatusBadge.tsx     # Reusable status indicator badge with expand support
+├── services/
+│   └── api.ts              # Backend API client functions
 ├── types/
 │   └── ansible.ts          # TypeScript type definitions
-├── App.tsx                 # Main application component
+├── pages/
+│   └── LogPage.tsx         # Log detail page with hosts and plays
+├── App.tsx                 # Main application component with routing
 ├── main.tsx                # React app entry point
 └── index.css               # Global styles and Tailwind directives
 ```
@@ -94,7 +99,8 @@ The application uses a hierarchical data structure to organize Ansible execution
 Log (uploaded Ansible log file)
  └── Host (servers in the log)
       └── Play (play executions on the host)
-           └── TaskSummary (task counts: ok/changed/failed)
+           ├── TaskSummary (aggregated task counts: ok/changed/failed)
+           └── Task (individual task executions with status and failure details)
 ```
 
 #### Log
@@ -170,6 +176,35 @@ interface TaskSummary {
 type PlayStatus = 'ok' | 'changed' | 'failed';
 ```
 
+#### Task
+Represents an individual Ansible task execution on a specific host:
+```typescript
+interface Task {
+  id: string;           // Unique identifier
+  name: string;         // Task name (e.g., "Install nginx")
+  order: number;        // Task order position (0-indexed)
+  line_number: number;  // Line number in raw log where task starts (nullable)
+  status: TaskStatus;   // Task status for this host
+  failure_message: string | null;  // Error message when task fails
+}
+```
+
+**Backend Model** (Django):
+- `play`: ForeignKey to Play - Every task belongs to a play (which belongs to a host)
+- `name`: CharField - Task name (max 500 chars)
+- `order`: PositiveIntegerField - Task execution order (0-indexed)
+- `line_number`: PositiveIntegerField - Line in raw log where task starts (nullable)
+- `status`: CharField with choices (ok/changed/failed/fatal/skipping/unreachable/ignored/rescued)
+- `failure_message`: TextField - Error message when task fails (nullable)
+- Database indexes on `(play, order)` and `(status)` for query performance
+
+#### TaskStatus
+```typescript
+type TaskStatus = 'ok' | 'changed' | 'failed' | 'fatal' | 'skipping' | 'unreachable' | 'ignored' | 'rescued';
+```
+
+**Note:** Both "failed" and "fatal" represent task failures. When filtering by status, requesting "failed" returns both "failed" and "fatal" tasks.
+
 ### Component Design
 
 #### ServerCard
@@ -183,14 +218,27 @@ type PlayStatus = 'ok' | 'changed' | 'failed';
 - Nested card design with lighter slate background
 - Displays play name prominently with color-coded status
 - Shows execution timestamp with calendar icon
-- Three StatusBadge components showing task counts (OK/Changed/Failed)
+- Three CollapsibleTaskSection components for OK/Changed/Failed task counts
+- Expandable to reveal task details per status
 - Compact design suitable for multiple plays per host
+
+#### CollapsibleTaskSection
+- Wraps StatusBadge with expand/collapse functionality
+- Lazy-loads tasks from API on first expand
+- Caches fetched tasks (no refetch on collapse/expand)
+- Shows loading spinner while fetching
+- Displays task names with failure messages for failed tasks
+- Sections with count 0 are disabled (grayed out, non-clickable)
+- Multiple sections can be expanded simultaneously (independent mode)
 
 #### StatusBadge
 - Reusable component for displaying status counts
 - Color-coded backgrounds with semi-transparent overlays
 - Border styling for definition
 - Flex layout with label and count
+- Optional props: `disabled`, `expanded`, `showChevron`, `onClick`
+- Supports interactive expand/collapse with chevron indicator
+- Disabled state shows grayed out, non-clickable badge
 
 #### PlayHeader (Legacy)
 - Legacy component no longer used in main app
@@ -312,14 +360,13 @@ poetry run python manage.py runserver
 - `poetry run poe flake8-check` - Run flake8 style checks
 - `poetry run poe black-check` - Check code formatting
 
-### Mock Data
+### Frontend Data Flow
 
-The first iteration uses hardcoded mock data in [frontend/src/App.tsx](frontend/src/App.tsx):
-- 5 example hosts with realistic hostnames (web-01, web-02, db-01, lb-01, cache-01)
-- Each host has 1-3 plays with descriptive names
-- Mix of OK, Changed, and Failed play statuses
-- Varied task counts per play (5-18 tasks)
-- Execution timestamps showing relative times for each play
+The frontend fetches data from the backend API:
+- **Log Page** (`/log/:logId`): Fetches log with hosts and plays via `fetchLog(logId)`
+- **Task Lists**: Lazy-loaded via `fetchTasks(playId, status)` when expanding status sections
+- **Caching**: Tasks are cached in component state after first fetch
+- **Error States**: Connection errors and 404s are handled with user-friendly messages
 
 ## Current Implementation
 
@@ -343,7 +390,7 @@ The first iteration uses hardcoded mock data in [frontend/src/App.tsx](frontend/
 - **SQLite Database**: Initialized with Django migrations
 - **Development Ready**: Comprehensive documentation and setup guides
 
-### v0.3.0 - Log Parsing & Admin Interface (Current)
+### v0.3.0 - Log Parsing & Admin Interface
 - **Ansible Log Parser Service**: Auto-detects and parses both raw stdout and timestamped log formats
 - **POST `/api/logs/` Endpoint**: Upload and parse Ansible logs via API
 - **Django Admin Interface**: Full admin panel with custom features
@@ -352,6 +399,19 @@ The first iteration uses hardcoded mock data in [frontend/src/App.tsx](frontend/
 - **Test Submission Page**: Custom admin view for testing log parsing
 - **Play Ordering**: Line number and order fields for accurate play sequencing
 - **Poe Task Runner**: Integrated linting commands (autoflake, flake8, black)
+
+### v0.3.1 - Task-Level Parsing (Current)
+- **Task Model**: New model to store individual task executions per play per host
+- **Task Extraction**: Parser extracts task names, status, and failure messages from logs
+- **Per-Host Task Status**: Each task stores its status (ok/changed/failed/fatal/skipping/etc.) for the specific host
+- **Failure Messages**: Task failures include error messages from Ansible output
+- **Dedicated Task Endpoint**: `GET /api/plays/{id}/tasks/` returns task list with status filtering
+- **Failed Filter Includes Fatal**: Filtering by "failed" returns both "failed" and "fatal" tasks
+- **TaskAdmin**: Full admin interface for viewing and filtering tasks
+- **TaskInline**: View tasks inline when editing plays in admin
+- **Frontend Task Display**: Collapsible task sections in PlayCard with lazy-loaded task lists
+- **CollapsibleTaskSection Component**: Expandable status badges that fetch and display tasks
+- **fetchTasks API**: Frontend API function for fetching tasks by play ID and status
 
 ### Database Models
 
@@ -372,7 +432,16 @@ The first iteration uses hardcoded mock data in [frontend/src/App.tsx](frontend/
 - `line_number`: Line in raw log where play starts (for navigation)
 - `order`: Play order position for correct sequencing
 - `tasks` property returns TaskSummary dict
+- `tasks_list` related name for accessing Task instances
 - Database indexes for efficient querying
+
+**Task Model** - Represents individual task executions
+- Fields: `name`, `order`, `line_number`, `status`, `failure_message`
+- ForeignKey to Play (cascading delete)
+- Status choices: ok, changed, failed, fatal, skipping, unreachable, ignored, rescued
+- `failure_message`: Stores error details when task fails
+- One Task instance per task per play per host
+- Database indexes on `(play, order)` and `(status)`
 
 ### Available Serializers
 
@@ -381,13 +450,16 @@ The first iteration uses hardcoded mock data in [frontend/src/App.tsx](frontend/
 - **LogCreateSerializer**: For uploading new logs
 - **HostSerializer**: Full host with nested plays
 - **HostListSerializer**: Lightweight host listing
-- **PlaySerializer**: Full play with task summary
+- **PlaySerializer**: Full play with task summary and tasks_list
 - **PlayCreateSerializer**: For creating plays
-- **TaskSummarySerializer**: Task counts (ok/changed/failed)
+- **TaskSummarySerializer**: Aggregated task counts (ok/changed/failed)
+- **TaskSerializer**: Individual task with status and failure message
 
 ### Current API Endpoints
 
-The backend uses Django REST Framework with a `LogViewSet` that provides create and retrieve access to logs.
+The backend uses Django REST Framework with ViewSets:
+- `LogViewSet`: Create and retrieve logs with nested hosts and plays
+- `PlayViewSet`: Access play-related operations including task listing
 
 #### Logs
 
@@ -410,7 +482,8 @@ The backend uses Django REST Framework with a `LogViewSet` that provides create 
 **GET** `/api/logs/{id}/`
 - Retrieve a specific log with all hosts and plays
 - Uses `prefetch_related` for optimized nested queries
-- Response includes nested hosts with their plays
+- Response includes nested hosts with their plays (without individual task details)
+- Use `/api/plays/{id}/tasks/` to get task details for a specific play
 
 **Example Response:**
 ```json
@@ -473,6 +546,61 @@ The backend uses Django REST Framework with a `LogViewSet` that provides create 
 ]
 ```
 
+#### Plays
+
+**GET** `/api/plays/{id}/tasks/`
+- List all tasks for a specific play
+- Supports filtering by task status via query parameter
+- Returns tasks ordered by execution order
+
+**Query Parameters:**
+- `status` (optional): Filter by task status. Valid values: `ok`, `changed`, `failed`, `fatal`, `skipping`, `unreachable`, `ignored`, `rescued`
+  - **Note:** Filtering by `failed` returns both `failed` and `fatal` tasks
+
+**Response Codes:**
+- `200 OK`: List of tasks returned successfully
+- `400 Bad Request`: Invalid status parameter (includes valid options in response)
+- `404 Not Found`: Play with given UUID does not exist
+
+**Example Request:**
+```bash
+# Get all tasks for a play
+GET /api/plays/550e8400-e29b-41d4-a716-446655440000/tasks/
+
+# Get only failed tasks
+GET /api/plays/550e8400-e29b-41d4-a716-446655440000/tasks/?status=failed
+```
+
+**Example Response (200):**
+```json
+[
+  {
+    "id": "uuid-string",
+    "name": "Gathering Facts",
+    "order": 0,
+    "line_number": 3,
+    "status": "ok",
+    "failure_message": null
+  },
+  {
+    "id": "uuid-string",
+    "name": "Install nginx",
+    "order": 1,
+    "line_number": 7,
+    "status": "changed",
+    "failure_message": null
+  }
+]
+```
+
+**Example Error Response (400 - Invalid status):**
+```json
+{
+  "error": "Invalid status 'invalid'",
+  "valid_statuses": ["ok", "changed", "failed", "fatal", "skipping", "unreachable", "ignored", "rescued"]
+}
+```
+
 ### Log Parser Service
 
 The `LogParserService` in [backend/api/services/log_parser.py](backend/api/services/log_parser.py) handles parsing Ansible output.
@@ -486,12 +614,15 @@ The `LogParserService` in [backend/api/services/log_parser.py](backend/api/servi
 2. Parse using `ansible-output-parser` library
 3. Extract hosts from PLAY RECAP section
 4. Extract play names with line numbers
-5. Determine status per host (failed > changed > ok)
+5. Extract tasks with per-host status and failure messages
+6. Determine status per host (failed > changed > ok)
 
 **Data Classes:**
 - `ParsedHost`: hostname, ok, changed, failed, unreachable, skipped, rescued, ignored
 - `ParsedPlay`: name, order, line_number
-- `ParseResult`: success, hosts, plays, timestamp, error details
+- `ParsedTask`: name, order, play_name, line_number, results (list of ParsedTaskResult)
+- `ParsedTaskResult`: hostname, status (ok/changed/failed/fatal/skipping/unreachable/ignored/rescued), message
+- `ParseResult`: success, hosts, plays, tasks, timestamp, error details
 
 ### Django Admin Interface
 
@@ -514,7 +645,15 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - List view: name, hostname, log title, date, status badge, task summary, total tasks
 - Filters: by status, date, host, log, has failed tasks, task count range
 - Search: by name, hostname, log title
+- Inline: view/edit tasks directly
 - Fieldsets: organized into Play Information, Task Summary, Metadata sections
+
+**TaskAdmin Features:**
+- List view: name, play name, hostname, order, status badge, has error indicator
+- Filters: by status, log, host
+- Search: by task name, play name, hostname
+- Fieldsets: organized into Task Information, Execution Result, Metadata sections
+- Color-coded status badges for all task statuses (ok/changed/failed/fatal/skipped/unreachable/ignored/rescued)
 
 **Custom Admin Filters:**
 - `HasFailuresFilter`: Filter logs by whether they contain failed plays
@@ -529,17 +668,17 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - Shows created log summary on success with link to view
 
 ### Current Limitations
-- Frontend still uses mock data (backend integration in progress)
 - Log list endpoint not yet implemented (`GET /api/logs/`)
-- No filtering or search capabilities on API endpoints
+- Limited filtering (only task status filtering on `/api/plays/{id}/tasks/`)
+- No log upload UI in frontend (must use admin or API directly)
 - No authentication or user management
 - No real-time updates
 
 ## Future Iterations
 
-### v0.4.0 - Frontend Integration (Next)
-- **Frontend API Integration**: Replace mock data with API calls
+### v0.4.0 - Frontend Enhancements (Next)
 - **Log Upload UI**: Form to submit Ansible logs from frontend
+- **Log List Page**: Display all logs with navigation
 - **Error Handling**: Display parsing errors to users
 - **Loading States**: Skeleton loaders during API calls
 
@@ -551,8 +690,8 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - Export functionality (JSON, CSV formats)
 
 ### v0.6.0 - Enhanced UI Features
-- Detailed task-level information display
-- Expandable server cards with full task details
+- Task search and filtering in UI
+- Jump to line number in raw log view
 - Improved error handling and user feedback
 
 ### v0.7.0+ - Advanced Features
@@ -585,14 +724,17 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 
 ### Frontend Source Files
 - [frontend/src/main.tsx](frontend/src/main.tsx) - React application entry point
-- [frontend/src/App.tsx](frontend/src/App.tsx) - Main application component with mock host data
+- [frontend/src/App.tsx](frontend/src/App.tsx) - Main application component with React Router
 - [frontend/src/index.css](frontend/src/index.css) - Global styles and Tailwind directives
 - [frontend/src/vite-env.d.ts](frontend/src/vite-env.d.ts) - Vite environment type declarations
-- [frontend/src/types/ansible.ts](frontend/src/types/ansible.ts) - TypeScript type definitions (Host, Play, TaskSummary)
-- [frontend/src/components/PlayCard.tsx](frontend/src/components/PlayCard.tsx) - Individual play card with task summaries
+- [frontend/src/types/ansible.ts](frontend/src/types/ansible.ts) - TypeScript type definitions (Host, Play, Task, TaskSummary)
+- [frontend/src/services/api.ts](frontend/src/services/api.ts) - Backend API client (fetchLog, fetchTasks)
+- [frontend/src/pages/LogPage.tsx](frontend/src/pages/LogPage.tsx) - Log detail page with hosts grid
+- [frontend/src/components/CollapsibleTaskSection.tsx](frontend/src/components/CollapsibleTaskSection.tsx) - Expandable task list with lazy loading
+- [frontend/src/components/PlayCard.tsx](frontend/src/components/PlayCard.tsx) - Individual play card with collapsible task sections
 - [frontend/src/components/PlayHeader.tsx](frontend/src/components/PlayHeader.tsx) - (Legacy) Play title and date component
 - [frontend/src/components/ServerCard.tsx](frontend/src/components/ServerCard.tsx) - Host card displaying multiple plays
-- [frontend/src/components/StatusBadge.tsx](frontend/src/components/StatusBadge.tsx) - Status indicator badge
+- [frontend/src/components/StatusBadge.tsx](frontend/src/components/StatusBadge.tsx) - Status indicator badge with expand support
 
 ### Backend Configuration Files
 - [backend/pyproject.toml](backend/pyproject.toml) - Poetry dependencies and project metadata
@@ -604,9 +746,9 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - [backend/ansible_ui/urls.py](backend/ansible_ui/urls.py) - Root URL configuration
 - [backend/ansible_ui/wsgi.py](backend/ansible_ui/wsgi.py) - WSGI application
 - [backend/ansible_ui/asgi.py](backend/ansible_ui/asgi.py) - ASGI application
-- [backend/api/views.py](backend/api/views.py) - API view implementations (LogViewSet)
+- [backend/api/views.py](backend/api/views.py) - API view implementations (LogViewSet, PlayViewSet)
 - [backend/api/urls.py](backend/api/urls.py) - API URL routing
-- [backend/api/models.py](backend/api/models.py) - Database models (Log, Host, Play)
+- [backend/api/models.py](backend/api/models.py) - Database models (Log, Host, Play, Task)
 - [backend/api/serializers.py](backend/api/serializers.py) - DRF serializers for all models
 - [backend/api/admin.py](backend/api/admin.py) - Django admin configuration with custom filters
 - [backend/api/tests.py](backend/api/tests.py) - Test cases (future)
