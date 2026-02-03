@@ -39,6 +39,8 @@ The primary goal is to provide DevOps teams and system administrators with an in
 
 ### Production Deployment
 - **Docker**: Multi-stage containerization with Docker Compose
+- **GitHub Actions**: CI/CD pipeline for automated Docker builds
+- **GitHub Container Registry (GHCR)**: Docker image hosting
 - **gunicorn**: WSGI HTTP server for Django
 - **nginx**: Reverse proxy and static file server
 - **PostgreSQL 15**: Production database
@@ -81,6 +83,11 @@ ansible-ui/
 ├── docker/                # Docker configuration files
 │   ├── entrypoint.api.sh # API container startup script
 │   └── nginx.conf        # nginx reverse proxy configuration
+│
+├── .github/               # GitHub configuration
+│   └── workflows/
+│       ├── docker-build.yml  # CI/CD: Docker build & push to GHCR
+│       └── python-lint.yml   # CI: Python linting checks
 │
 ├── Dockerfile            # Multi-stage Docker build
 ├── docker-compose.yml    # Docker Compose orchestration
@@ -409,9 +416,8 @@ The project includes production-ready Docker configuration with multi-stage buil
    docker-compose up -d
    ```
 
-4. **Run migrations and create superuser:**
+4. **Create superuser** (migrations run automatically on startup):
    ```bash
-   docker-compose exec api django-admin migrate
    docker-compose exec api django-admin createsuperuser
    ```
 
@@ -443,6 +449,54 @@ The project includes production-ready Docker configuration with multi-stage buil
 - Consider HTTPS termination (nginx + Let's Encrypt)
 - Set up volume backups for PostgreSQL data
 - Add health checks to docker-compose
+
+### CI/CD with GitHub Actions
+
+The project includes automated Docker image builds via GitHub Actions.
+
+**Workflow File:** [.github/workflows/docker-build.yml](.github/workflows/docker-build.yml)
+
+**Trigger Events:**
+- Push to any branch → Build and push images
+- Pull request to main → Build only (no push)
+
+**Images Published:**
+- `ghcr.io/wixyvir/ansible-ui/api:<tag>`
+- `ghcr.io/wixyvir/ansible-ui/web:<tag>`
+
+**Tagging Strategy:**
+| Event | Tags |
+|-------|------|
+| Push to `main` | `latest`, `main`, `sha-<commit>` |
+| Push to `feature/foo` | `feature-foo`, `sha-<commit>` |
+| Push to `dev` | `dev`, `sha-<commit>` |
+| Pull request | Build only (no push) |
+
+**Using Pre-built Images:**
+
+1. **Authenticate to GHCR:**
+   ```bash
+   echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+   ```
+
+2. **Pull latest images:**
+   ```bash
+   docker-compose pull
+   ```
+
+3. **Or use a specific branch tag:**
+   ```bash
+   DOCKER_TAG=feature-foo docker-compose pull
+   ```
+
+4. **Start with pulled images:**
+   ```bash
+   docker-compose up -d
+   ```
+
+**Local Development:**
+- `docker-compose build` still works for local builds
+- Images are tagged with GHCR names for consistency
 
 ### Development Workflow
 
@@ -555,6 +609,10 @@ The frontend fetches data from the backend API:
 - **CSRF Protection**: Configurable CSRF_TRUSTED_ORIGINS with http/https defaults, SECURE_PROXY_SSL_HEADER for reverse proxy
 - **Production Ready**: Full deployment configuration with security best practices
 - **.env.production Template**: Example production environment configuration
+- **GitHub Actions CI/CD**: Automated Docker image builds on push to any branch
+- **GitHub Container Registry (GHCR)**: Docker images published to `ghcr.io/wixyvir/ansible-ui/api` and `ghcr.io/wixyvir/ansible-ui/web`
+- **Branch-based Tagging**: Images tagged with branch name (sanitized), `latest` for main, and SHA prefix for traceability
+- **Build Caching**: GitHub Actions cache for faster Docker builds
 
 ### Database Models
 
@@ -860,6 +918,10 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - [.dockerignore](.dockerignore) - Docker build context exclusions
 - [.env.production](.env.production) - Production environment variables template
 
+### GitHub Actions Workflows
+- [.github/workflows/docker-build.yml](.github/workflows/docker-build.yml) - Docker build & push to GHCR on branch push
+- [.github/workflows/python-lint.yml](.github/workflows/python-lint.yml) - Python linting (autoflake, flake8, black) on backend changes
+
 ### Frontend Configuration Files
 - [frontend/package.json](frontend/package.json) - NPM dependencies and scripts
 - [frontend/vite.config.ts](frontend/vite.config.ts) - Vite build configuration
@@ -996,6 +1058,14 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - **Separation of concerns**: Frontend, backend, and runtime are isolated
 - **Reference consistency**: Follows `platform_api` pattern with Rocky Linux 9
 - **Production ready**: gunicorn + nginx + PostgreSQL stack
+
+### Why GitHub Actions + GHCR?
+- **Native integration**: No external CI/CD service needed
+- **Free for public repos**: Unlimited Actions minutes and GHCR storage
+- **Automatic authentication**: `GITHUB_TOKEN` works out of the box
+- **Branch-based tagging**: Easy deployment of feature branches for testing
+- **Build caching**: GitHub Actions cache reduces build times significantly
+- **Matrix builds**: Build multiple targets (api, web) in parallel
 
 ### ESLint Configuration
 The project uses modern ESLint flat config (eslint.config.js) with:
