@@ -26,11 +26,12 @@ The primary goal is to provide DevOps teams and system administrators with an in
 - **ESLint**: Code linting and quality enforcement
 
 ### Backend
-- **Python 3.12+**: Modern Python with performance improvements
-- **Django 5.2**: High-level web framework
-- **Django REST Framework 3.16**: Powerful toolkit for building Web APIs
+- **Python 3.11+**: Modern Python with performance improvements
+- **Django 5.0**: High-level web framework
+- **Django REST Framework 3.14**: Powerful toolkit for building Web APIs
 - **Poetry**: Dependency management and packaging
 - **python-decouple**: Environment variable configuration management
+- **psycopg2**: PostgreSQL database adapter
 - **SQLite**: Development database (PostgreSQL for production)
 - **django-cors-headers**: CORS support for frontend communication
 - **ansible-output-parser**: Library for parsing Ansible playbook output
@@ -40,8 +41,8 @@ The primary goal is to provide DevOps teams and system administrators with an in
 - **Docker**: Multi-stage containerization with Docker Compose
 - **gunicorn**: WSGI HTTP server for Django
 - **nginx**: Reverse proxy and static file server
-- **PostgreSQL 13**: Production database
-- **Rocky Linux 9**: Base container image
+- **PostgreSQL 15**: Production database
+- **Rocky Linux 9**: Base container image (Python 3.11)
 
 ## Architecture
 
@@ -66,6 +67,7 @@ ansible-ui/
 │   │   ├── urls.py       # API URL routing
 │   │   ├── models.py     # Database models
 │   │   ├── serializers.py # DRF serializers
+│   │   ├── fields.py     # Custom Django fields (UUIDAutoField)
 │   │   ├── admin.py      # Django admin configuration
 │   │   ├── services/     # Business logic services
 │   │   │   └── log_parser.py  # Ansible log parsing service
@@ -350,6 +352,7 @@ The backend uses `python-decouple` for environment variable management. Settings
 | `DJANGO_TZ` | Timezone | `UTC` |
 | `DJANGO_STATIC_ROOT` | Static files directory | `None` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:5173` |
+| `CSRF_TRUSTED_ORIGINS` | Comma-separated trusted origins for CSRF (full URLs) | http/https + ALLOWED_HOSTS |
 | `DB_NAME` | PostgreSQL database name | Required if `DJANGO_PROD=True` |
 | `DB_USERNAME` | PostgreSQL username | Required if `DJANGO_PROD=True` |
 | `DB_PASSWORD` | PostgreSQL password | Required if `DJANGO_PROD=True` |
@@ -367,6 +370,7 @@ DJANGO_PROD=True
 DJANGO_SECRET=your-secure-secret-key
 DJANGO_ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
 DJANGO_STATIC_ROOT=/var/www/static
+CSRF_TRUSTED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
 DB_NAME=ansible_ui
 DB_USERNAME=postgres
 DB_PASSWORD=your-secure-password
@@ -412,14 +416,14 @@ The project includes production-ready Docker configuration with multi-stage buil
    ```
 
 5. **Access the application:**
-   - Frontend: http://localhost/
-   - Admin: http://localhost/admin/
-   - API: http://localhost/api/
+   - Frontend: http://localhost:8000/
+   - Admin: http://localhost:8000/admin/
+   - API: http://localhost:8000/api/
 
 **docker-compose.yml services:**
 - `api`: Django backend (internal port 8000)
-- `db`: PostgreSQL with persistent volume
-- `web`: nginx (external port 80)
+- `db`: PostgreSQL 15 with persistent volume
+- `web`: nginx (external port 8000)
 
 **nginx routing:**
 - `/` → React frontend (SPA with fallback routing)
@@ -539,13 +543,16 @@ The frontend fetches data from the backend API:
 
 ### v0.4.0 - Docker Containerization & Environment Configuration (Current)
 - **python-decouple Integration**: Environment variable configuration for Django settings
-- **Environment Variables**: `DJANGO_SECRET`, `DJANGO_PROD`, `DJANGO_ALLOWED_HOSTS`, `DB_*`, etc.
+- **Environment Variables**: `DJANGO_SECRET`, `DJANGO_PROD`, `DJANGO_ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DB_*`, etc.
 - **Multi-stage Dockerfile**: Separate build stages for frontend, backend, API, and web
-- **Docker Compose**: Three-service architecture (api, db, web)
-- **PostgreSQL Production Database**: Configured with persistent volumes
+- **Docker Compose**: Three-service architecture (api, db, web) on port 8000
+- **PostgreSQL 15 Production Database**: Configured with persistent volumes
 - **gunicorn**: Production WSGI server for Django
-- **nginx Reverse Proxy**: Serves React frontend and proxies API/admin requests
-- **Rocky Linux 9**: Base image for backend containers
+- **nginx Reverse Proxy**: Serves React frontend and proxies API/admin requests with X-Forwarded-Proto header
+- **Rocky Linux 9**: Base image for backend containers (Python 3.11)
+- **UUIDAutoField**: Custom auto-field for consistent UUID primary keys across all models
+- **Squashed Migrations**: Single initial migration for cleaner database setup
+- **CSRF Protection**: Configurable CSRF_TRUSTED_ORIGINS with http/https defaults, SECURE_PROXY_SSL_HEADER for reverse proxy
 - **Production Ready**: Full deployment configuration with security best practices
 - **.env.production Template**: Example production environment configuration
 
@@ -884,7 +891,7 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - [backend/.env.example](backend/.env.example) - Environment variables template
 
 ### Backend Source Files
-- [backend/ansible_ui/settings.py](backend/ansible_ui/settings.py) - Django settings (apps, middleware, CORS, DRF)
+- [backend/ansible_ui/settings.py](backend/ansible_ui/settings.py) - Django settings (apps, middleware, CORS, DRF, CSRF)
 - [backend/ansible_ui/urls.py](backend/ansible_ui/urls.py) - Root URL configuration
 - [backend/ansible_ui/wsgi.py](backend/ansible_ui/wsgi.py) - WSGI application
 - [backend/ansible_ui/asgi.py](backend/ansible_ui/asgi.py) - ASGI application
@@ -892,9 +899,10 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - [backend/api/urls.py](backend/api/urls.py) - API URL routing
 - [backend/api/models.py](backend/api/models.py) - Database models (Log, Host, Play, Task)
 - [backend/api/serializers.py](backend/api/serializers.py) - DRF serializers for all models
+- [backend/api/fields.py](backend/api/fields.py) - Custom Django fields (UUIDAutoField for UUID primary keys)
 - [backend/api/admin.py](backend/api/admin.py) - Django admin configuration with custom filters
 - [backend/api/tests.py](backend/api/tests.py) - Test cases (future)
-- [backend/api/migrations/](backend/api/migrations/) - Database migration files
+- [backend/api/migrations/](backend/api/migrations/) - Database migration files (squashed into single initial)
 
 ### Backend Services
 - [backend/api/services/log_parser.py](backend/api/services/log_parser.py) - Ansible log parsing service
@@ -973,6 +981,13 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - Secure defaults for development
 - Production-ready configuration pattern
 - No code changes needed between environments
+
+### Why UUIDAutoField?
+- Consistent UUID primary keys across all models
+- More secure than sequential integers (no enumeration)
+- Works seamlessly with Django admin and DRF
+- Custom field combines UUIDField with AutoField behavior
+- Automatically generates UUIDs on model creation
 
 ### Why Docker Multi-stage Builds?
 - **Optimized image sizes**: Each stage only contains what's needed
