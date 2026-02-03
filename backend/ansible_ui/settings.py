@@ -32,7 +32,19 @@ DEBUG = not config("DJANGO_PROD", default=False, cast=bool)
 
 ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", default="", cast=Csv())
 
-CSRF_TRUSTED_ORIGINS = ["https://" + host for host in ALLOWED_HOSTS]
+# CSRF trusted origins - defaults to both http and https for ALLOWED_HOSTS
+# Can be overridden with CSRF_TRUSTED_ORIGINS env var (comma-separated full URLs)
+CSRF_TRUSTED_ORIGINS = config(
+    "CSRF_TRUSTED_ORIGINS",
+    default=",".join(
+        [f"http://{host}" for host in ALLOWED_HOSTS]
+        + [f"https://{host}" for host in ALLOWED_HOSTS]
+    ),
+    cast=Csv(),
+)
+
+# Trust X-Forwarded-Proto header from reverse proxy
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 # Application definition
@@ -146,7 +158,7 @@ STATIC_ROOT = config("DJANGO_STATIC_ROOT", default=None)
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+DEFAULT_AUTO_FIELD = "api.fields.UUIDAutoField"
 
 # CORS Configuration
 # Allow frontend development server to make requests to the backend

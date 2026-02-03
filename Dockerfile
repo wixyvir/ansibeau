@@ -3,9 +3,9 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /frontend
 
-# Copy package files and install dependencies
+# Copy package files and install dependencies (including devDependencies for build)
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm install
 
 # Copy frontend source and build
 COPY frontend/ ./
@@ -15,7 +15,7 @@ RUN npm run build
 FROM rockylinux:9 AS backend-builder
 
 # Install Python and Poetry
-RUN yum install -y python3 && curl -sSL https://install.python-poetry.org | python3 -
+RUN dnf install -y epel-release && dnf install -y python3.11 && curl -sSL https://install.python-poetry.org | python3.11 -
 ENV PATH="/root/.local/bin:$PATH"
 
 # Copy backend files needed for build
@@ -54,14 +54,14 @@ ENV DB_PORT=5432
 ADD docker/entrypoint.api.sh /entrypoint.sh
 
 # Install system dependencies
-RUN yum install -y python3 python3-pip nc postgresql python3-devel.x86_64 libpq-devel gcc
+RUN dnf install -y epel-release && dnf install -y python3.11 python3.11-pip nc postgresql python3.11-devel.x86_64 libpq-devel gcc
 
 # Install gunicorn
-RUN pip install gunicorn
+RUN pip3.11 install gunicorn
 
 # Copy and install built package
 COPY --from=backend-builder /app/dist/* /dist/
-RUN pip install ./dist/ansible_ui_backend-*.tar.gz
+RUN pip3.11 install ./dist/ansible_ui_backend-*.tar.gz
 
 # Collect static files
 RUN django-admin collectstatic --no-input

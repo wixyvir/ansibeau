@@ -12,7 +12,7 @@ services:
       - db
 
   db:
-    image: postgres:13
+    image: postgres:15
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:
@@ -26,7 +26,7 @@ services:
       target: web
     image: ansible-ui/web:latest
     ports:
-      - "80:80"
+      - "8000:80"
     depends_on:
       - api
 
