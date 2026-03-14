@@ -27,6 +27,9 @@ class LogViewSet(
 
     queryset = Log.objects.all()
     serializer_class = LogSerializer
+    # Disable DRF's SessionAuthentication (which enforces CSRF) on this
+    # viewset — auth is handled by HasValidToken permission on create.
+    authentication_classes = []
 
     def get_permissions(self):
         if self.action == "create":
