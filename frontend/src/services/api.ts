@@ -28,14 +28,19 @@ export const fetchLog = async (logId: string): Promise<Log> => {
   return response.json();
 };
 
-export const submitLog = async (title: string, rawContent: string): Promise<Log> => {
+export const submitLog = async (title: string, rawContent: string, token?: string): Promise<Log> => {
   const backendUri = getBackendUri();
   let response: Response;
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   try {
     response = await fetch(`${backendUri}/api/logs/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ title, raw_content: rawContent }),
     });
   } catch (err) {
@@ -45,6 +50,9 @@ export const submitLog = async (title: string, rawContent: string): Promise<Log>
 
   if (!response.ok) {
     const data = await response.json().catch(() => null);
+    if (response.status === 403) {
+      throw new Error(`Authentication failed: ${data?.detail || 'Invalid or missing token'}`);
+    }
     const detail = data?.error || data?.detail || `${response.status} ${response.statusText}`;
     throw new Error(`Submission failed: ${detail}`);
   }

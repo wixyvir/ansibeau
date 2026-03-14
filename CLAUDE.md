@@ -70,6 +70,7 @@ ansibeau/
 │   │   ├── models.py     # Database models
 │   │   ├── serializers.py # DRF serializers
 │   │   ├── fields.py     # Custom Django fields (UUIDAutoField)
+│   │   ├── permissions.py # Custom DRF permissions (HasValidToken)
 │   │   ├── admin.py      # Django admin configuration
 │   │   ├── services/     # Business logic services
 │   │   │   ├── log_parser.py  # Ansible log parsing service
@@ -131,6 +132,8 @@ Log (uploaded Ansible log file)
       └── Play (play executions on the host)
            ├── TaskSummary (aggregated task counts: ok/changed/failed)
            └── Task (individual task executions with status and failure details)
+
+Token (API authentication tokens for log submission)
 ```
 
 #### Log
@@ -368,6 +371,7 @@ The backend uses `python-decouple` for environment variable management. Settings
 | `DB_PASSWORD` | PostgreSQL password | Required if `DJANGO_PROD=True` |
 | `DB_HOSTNAME` | PostgreSQL host | Required if `DJANGO_PROD=True` |
 | `DB_PORT` | PostgreSQL port | Required if `DJANGO_PROD=True` |
+| `AUTH_REQUIRED` | Require Bearer token for log submission | `True` |
 | `BACKEND_URI` | Frontend backend URI (empty = relative URLs via nginx proxy) | Empty (Docker), `http://localhost:8000` (dev) |
 
 **Development** (no `.env` file needed - defaults work):
@@ -606,7 +610,15 @@ The frontend fetches data from the backend API:
 - **CollapsibleTaskSection Component**: Expandable status badges that fetch and display tasks
 - **fetchTasks API**: Frontend API function for fetching tasks by play ID and status
 
-### v0.5.0 - Parsing Fixes (Current)
+### v0.6.0 - Token Authentication (Current)
+- **Token Model**: New model for API authentication tokens with value, status (active/inactive), nullable expiration date, and comment
+- **HasValidToken Permission**: Custom DRF permission class checking `Authorization: Bearer <token>` header on `POST /api/logs/`
+- **AUTH_REQUIRED Setting**: Environment variable toggle (default `True`) to disable token requirement for development
+- **TokenAdmin**: Django admin interface with masked token display, colored status badges, validity indicator
+- **Frontend Token Input**: Password-type input field on submit page, persisted to localStorage
+- **403 Error Handling**: Frontend displays specific authentication error messages
+
+### v0.5.0 - Parsing Fixes
 - **Per-play task counts**: Play records now have accurate per-play task counts computed from individual parsed tasks, instead of using PLAY RECAP global aggregates that were incorrectly assigned to every play
 - **Per-play status**: Play status (ok/changed/failed) determined from per-play task counts, not host-level RECAP
 - **Warning suppression**: Suppressed noisy `WARNING: Failed parsing line` output from `ansible-output-parser` library using `contextlib.redirect_stdout`
@@ -663,6 +675,12 @@ The frontend fetches data from the backend API:
 - One Task instance per task per play per host
 - Database indexes on `(play, order)` and `(status)`
 
+**Token Model** - API authentication tokens for log submission
+- Fields: `value` (unique, indexed), `status` (active/inactive), `expires_at` (nullable), `comment`, `created_at`
+- `is_valid` property: checks status is active and token is not expired
+- Managed via Django admin (`/admin/api/token/`)
+- Used by `HasValidToken` permission class on `POST /api/logs/`
+
 ### Available Serializers
 
 - **LogSerializer**: Full log with nested hosts
@@ -685,10 +703,12 @@ The backend uses Django REST Framework with ViewSets:
 
 **POST** `/api/logs/`
 - Upload and parse a new Ansible log
+- **Authentication**: Requires `Authorization: Bearer <token>` header (when `AUTH_REQUIRED=True`)
 - Request body: `{ "title": "string", "raw_content": "string" }`
 - Auto-detects log format (raw stdout or timestamped)
 - Creates Log, Host, and Play entities from parsed data
 - Returns 201 with full log data on success
+- Returns 403 if token is missing, invalid, inactive, or expired
 - Returns 500 with detailed error on parsing failure
 
 **Example Request:**
@@ -1000,6 +1020,7 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - [backend/ansibeau/wsgi.py](backend/ansibeau/wsgi.py) - WSGI application
 - [backend/ansibeau/asgi.py](backend/ansibeau/asgi.py) - ASGI application
 - [backend/api/views.py](backend/api/views.py) - API view implementations (LogViewSet, PlayViewSet)
+- [backend/api/permissions.py](backend/api/permissions.py) - Custom DRF permissions (HasValidToken)
 - [backend/api/urls.py](backend/api/urls.py) - API URL routing
 - [backend/api/models.py](backend/api/models.py) - Database models (Log, Host, Play, Task)
 - [backend/api/serializers.py](backend/api/serializers.py) - DRF serializers for all models

@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import Host, Log, Play, Task
+from .permissions import HasValidToken
 from .serializers import (
     HostSerializer,
     LogCreateSerializer,
@@ -19,13 +20,18 @@ class LogViewSet(
     """
     ViewSet for viewing and creating logs.
 
-    create: Upload and parse a new Ansible log
+    create: Upload and parse a new Ansible log (requires Bearer token)
     retrieve: Get a specific log with all hosts and plays
     hosts: Get all hosts for a specific log
     """
 
     queryset = Log.objects.all()
     serializer_class = LogSerializer
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [HasValidToken()]
+        return super().get_permissions()
 
     def get_serializer_class(self):
         if self.action == "create":

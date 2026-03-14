@@ -130,3 +130,53 @@ class Task(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.status}) - {self.play.host.hostname}"
+
+
+class Token(models.Model):
+    """API token for authenticating log submissions."""
+
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("inactive", "Inactive"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    value = models.CharField(
+        max_length=255,
+        unique=True,
+        db_index=True,
+        help_text="The token string used in Authorization header",
+    )
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default="active", db_index=True
+    )
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Token expiration date. Null means no expiration.",
+    )
+    comment = models.TextField(
+        blank=True, help_text="Description or purpose of this token"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Token"
+        verbose_name_plural = "Tokens"
+
+    def __str__(self):
+        masked = self.value[:8] + "..." if len(self.value) > 8 else self.value
+        return f"{masked} ({self.status})"
+
+    @property
+    def is_valid(self):
+        """Check if token is active and not expired."""
+        if self.status != "active":
+            return False
+        if self.expires_at is not None:
+            from django.utils import timezone
+
+            if self.expires_at < timezone.now():
+                return False
+        return True
