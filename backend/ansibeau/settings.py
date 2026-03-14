@@ -30,7 +30,7 @@ SECRET_KEY = config(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = not config("DJANGO_PROD", default=False, cast=bool)
 
-ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", default="", cast=Csv())
+ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", default="localhost", cast=Csv())
 
 # CSRF trusted origins - defaults to both http and https for ALLOWED_HOSTS
 # Can be overridden with CSRF_TRUSTED_ORIGINS env var (comma-separated full URLs)
@@ -159,6 +159,10 @@ STATIC_ROOT = config("DJANGO_STATIC_ROOT", default=None)
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "api.fields.UUIDAutoField"
+
+# Token authentication for log submission
+# Set to False to disable token requirement on POST /api/logs/
+AUTH_REQUIRED = config("AUTH_REQUIRED", default=True, cast=bool)
 
 # CORS Configuration
 # Allow frontend development server to make requests to the backend

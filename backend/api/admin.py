@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.urls import path
 from django.utils.html import format_html
 
-from .models import Host, Log, Play, Task
+from .models import Host, Log, Play, Task, Token
 from .services.log_creator import create_log_entities
 from .services.log_parser import LogParserService
 
@@ -568,6 +568,73 @@ class TaskAdmin(admin.ModelAdmin):
 
     has_failure_message.boolean = True
     has_failure_message.short_description = "Has Error"
+
+
+@admin.register(Token)
+class TokenAdmin(admin.ModelAdmin):
+    """Admin interface for managing API tokens."""
+
+    list_display = [
+        "masked_value",
+        "status_badge",
+        "comment_preview",
+        "expires_at",
+        "is_valid_display",
+        "created_at",
+    ]
+
+
+    class Media:
+        js = ("admin/js/token_generate.js",)
+
+    list_filter = ["status", "created_at"]
+    search_fields = ["value", "comment"]
+    readonly_fields = ["id", "created_at", "is_valid_display"]
+    fieldsets = [
+        ("Token", {"fields": ["id", "value", "status"]}),
+        ("Details", {"fields": ["expires_at", "comment"]}),
+        (
+            "Metadata",
+            {"fields": ["created_at", "is_valid_display"], "classes": ["collapse"]},
+        ),
+    ]
+
+    def masked_value(self, obj):
+        """Show first 8 chars of token value."""
+        if len(obj.value) > 8:
+            return f"{obj.value[:8]}..."
+        return obj.value
+
+    masked_value.short_description = "Token"
+
+    def status_badge(self, obj):
+        """Colored status badge."""
+        if obj.status == "active":
+            return format_html(
+                '<span style="background: #064e3b; color: #10b981; padding: 2px 8px; '
+                'border-radius: 4px; font-weight: 600;">ACTIVE</span>'
+            )
+        return format_html(
+            '<span style="background: #374151; color: #9ca3af; padding: 2px 8px; '
+            'border-radius: 4px; font-weight: 600;">INACTIVE</span>'
+        )
+
+    status_badge.short_description = "Status"
+
+    def comment_preview(self, obj):
+        """Truncated comment."""
+        if obj.comment and len(obj.comment) > 50:
+            return obj.comment[:50] + "..."
+        return obj.comment or "-"
+
+    comment_preview.short_description = "Comment"
+
+    def is_valid_display(self, obj):
+        """Show if token is currently valid."""
+        return obj.is_valid
+
+    is_valid_display.boolean = True
+    is_valid_display.short_description = "Currently Valid"
 
 
 # Admin Site Customization
