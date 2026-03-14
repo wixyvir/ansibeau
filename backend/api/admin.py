@@ -5,7 +5,8 @@ from django.urls import path
 from django.utils.html import format_html
 
 from .models import Host, Log, Play, Task
-from .services.log_parser import LogParserService, determine_status
+from .services.log_creator import create_log_entities
+from .services.log_parser import LogParserService
 
 
 # Custom List Filters
@@ -237,40 +238,7 @@ class LogAdmin(admin.ModelAdmin):
 
             # Create the log and related entities
             log = Log.objects.create(title=title, raw_content=raw_content)
-
-            # Build a map of (hostname, play_name) -> Play for task association
-            play_map = {}
-
-            for parsed_host in result.hosts:
-                host = Host.objects.create(log=log, hostname=parsed_host.hostname)
-
-                for parsed_play in result.plays:
-                    play = Play.objects.create(
-                        host=host,
-                        name=parsed_play.name,
-                        date=result.timestamp,
-                        status=determine_status(parsed_host),
-                        tasks_ok=parsed_host.ok,
-                        tasks_changed=parsed_host.changed,
-                        tasks_failed=parsed_host.failed,
-                        line_number=parsed_play.line_number,
-                        order=parsed_play.order,
-                    )
-                    play_map[(parsed_host.hostname, parsed_play.name)] = play
-
-            # Create Task entities from parsed tasks
-            for parsed_task in result.tasks:
-                for task_result in parsed_task.results:
-                    play = play_map.get((task_result.hostname, parsed_task.play_name))
-                    if play:
-                        Task.objects.create(
-                            play=play,
-                            name=parsed_task.name,
-                            order=parsed_task.order,
-                            line_number=parsed_task.line_number,
-                            status=task_result.status,
-                            failure_message=task_result.message,
-                        )
+            create_log_entities(log, result)
 
             # Success - show result
             total_plays = sum(host.plays.count() for host in log.hosts.all())

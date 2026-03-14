@@ -72,7 +72,8 @@ ansibeau/
 │   │   ├── fields.py     # Custom Django fields (UUIDAutoField)
 │   │   ├── admin.py      # Django admin configuration
 │   │   ├── services/     # Business logic services
-│   │   │   └── log_parser.py  # Ansible log parsing service
+│   │   │   ├── log_parser.py  # Ansible log parsing service
+│   │   │   └── log_creator.py # Database entity creation from parsed results
 │   │   └── templates/    # Django admin templates
 │   │       └── admin/api/log/  # Custom admin templates
 │   ├── manage.py         # Django management script
@@ -602,7 +603,14 @@ The frontend fetches data from the backend API:
 - **CollapsibleTaskSection Component**: Expandable status badges that fetch and display tasks
 - **fetchTasks API**: Frontend API function for fetching tasks by play ID and status
 
-### v0.4.0 - Docker Containerization & Environment Configuration (Current)
+### v0.5.0 - Parsing Fixes (Current)
+- **Per-play task counts**: Play records now have accurate per-play task counts computed from individual parsed tasks, instead of using PLAY RECAP global aggregates that were incorrectly assigned to every play
+- **Per-play status**: Play status (ok/changed/failed) determined from per-play task counts, not host-level RECAP
+- **Warning suppression**: Suppressed noisy `WARNING: Failed parsing line` output from `ansible-output-parser` library using `contextlib.redirect_stdout`
+- **Shared log creation service**: Extracted `create_log_entities()` into `backend/api/services/log_creator.py`, shared between API views and admin interface
+- **Helper functions**: `compute_play_host_counts()` and `determine_play_status()` in log_parser.py
+
+### v0.4.0 - Docker Containerization & Environment Configuration
 - **python-decouple Integration**: Environment variable configuration for Django settings
 - **Environment Variables**: `DJANGO_SECRET`, `DJANGO_PROD`, `DJANGO_ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DB_*`, etc.
 - **Multi-stage Dockerfile**: Separate build stages for frontend, backend, API, and web
@@ -818,13 +826,17 @@ The `LogParserService` in [backend/api/services/log_parser.py](backend/api/servi
 - **Raw stdout**: Direct output from `ansible-playbook` command (starts with `PLAY [...]`)
 - **Timestamped logs**: Log files with timestamp prefix (`YYYY-MM-DD HH:MM:SS,mmm | ...`)
 
+**Warning Suppression:**
+The `ansible-output-parser` library prints `WARNING: Failed parsing line '...'` to stdout for non-status lines (e.g., `included:`, JSON output blocks). These are suppressed using `contextlib.redirect_stdout(os.devnull)` around `Play()` and `Logs()` constructor calls.
+
 **Parsing Process:**
 1. Auto-detect format based on first line
 2. Parse using `ansible-output-parser` library for PLAY RECAP (host aggregate counts)
 3. Extract hosts from PLAY RECAP section
 4. Extract play names with line numbers (first occurrence for serial batches)
 5. **Custom task extraction** from raw content (handles serial execution and duplicate task names)
-6. Determine status per host (failed > changed > ok)
+6. **Per-play task counts** computed from individual parsed tasks via `compute_play_host_counts()` (not from PLAY RECAP, which only has global per-host aggregates)
+7. Per-play status determined from per-play counts (failed > changed > ok)
 
 **Task Extraction (Custom Parser):**
 
@@ -901,25 +913,25 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 
 ## Future Iterations
 
-### v0.5.0 - Frontend Enhancements (Next)
+### v0.6.0 - Frontend Enhancements (Next)
 - **Log Upload UI**: Form to submit Ansible logs from frontend
 - **Log List Page**: Display all logs with navigation
 - **Error Handling**: Display parsing errors to users
 - **Loading States**: Skeleton loaders during API calls
 
-### v0.6.0 - Enhanced API
+### v0.7.0 - Enhanced API
 - `GET /api/logs/` - List all logs with pagination
 - `GET /api/hosts/` - List all hosts across logs
 - `GET /api/plays/` - List all plays with filtering
 - Search and filter capabilities on API endpoints
 - Export functionality (JSON, CSV formats)
 
-### v0.7.0 - Enhanced UI Features
+### v0.8.0 - Enhanced UI Features
 - Task search and filtering in UI
 - Jump to line number in raw log view
 - Improved error handling and user feedback
 
-### v0.8.0+ - Advanced Features
+### v0.9.0+ - Advanced Features
 - User authentication and authorization (JWT or session-based)
 - Multi-user support with role-based access control
 - Real-time updates with WebSocket support
@@ -995,6 +1007,7 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 
 ### Backend Services
 - [backend/api/services/log_parser.py](backend/api/services/log_parser.py) - Ansible log parsing service
+- [backend/api/services/log_creator.py](backend/api/services/log_creator.py) - Database entity creation from parsed results (shared by views and admin)
 
 ### Backend Admin Templates
 - [backend/api/templates/admin/api/log/change_list.html](backend/api/templates/admin/api/log/change_list.html) - Custom log list with test submission link

@@ -9,7 +9,8 @@ from .serializers import (
     LogSerializer,
     TaskSerializer,
 )
-from .services.log_parser import LogParserService, determine_status
+from .services.log_creator import create_log_entities
+from .services.log_parser import LogParserService
 
 
 class LogViewSet(
@@ -72,41 +73,8 @@ class LogViewSet(
                 error_response, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # Create Host and Play entities from parsed data
-        # Build a map of (hostname, play_name) -> Play for task association
-        play_map = {}  # (hostname, play_name) -> Play instance
-
-        for parsed_host in result.hosts:
-            host = Host.objects.create(log=log, hostname=parsed_host.hostname)
-
-            # Create a Play for each parsed play with line number and order
-            for parsed_play in result.plays:
-                play = Play.objects.create(
-                    host=host,
-                    name=parsed_play.name,
-                    date=result.timestamp,
-                    status=determine_status(parsed_host),
-                    tasks_ok=parsed_host.ok,
-                    tasks_changed=parsed_host.changed,
-                    tasks_failed=parsed_host.failed,
-                    line_number=parsed_play.line_number,
-                    order=parsed_play.order,
-                )
-                play_map[(parsed_host.hostname, parsed_play.name)] = play
-
-        # Create Task entities from parsed tasks
-        for parsed_task in result.tasks:
-            for task_result in parsed_task.results:
-                play = play_map.get((task_result.hostname, parsed_task.play_name))
-                if play:
-                    Task.objects.create(
-                        play=play,
-                        name=parsed_task.name,
-                        order=parsed_task.order,
-                        line_number=parsed_task.line_number,
-                        status=task_result.status,
-                        failure_message=task_result.message,
-                    )
+        # Create Host, Play, and Task entities from parsed data
+        create_log_entities(log, result)
 
         # Refresh log to include newly created hosts and plays
         log.refresh_from_db()
