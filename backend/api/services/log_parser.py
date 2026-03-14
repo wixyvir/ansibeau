@@ -1,6 +1,8 @@
 """Service module for parsing Ansible logs using ansible-output-parser."""
 
+import contextlib
 import json
+import os
 import re
 import tempfile
 import traceback
@@ -147,7 +149,9 @@ class LogParserService:
         Returns:
             ParseResult with extracted hosts, plays, and tasks
         """
-        parser = Play(play_output=content)
+        with open(os.devnull, "w") as devnull:
+            with contextlib.redirect_stdout(devnull):
+                parser = Play(play_output=content)
 
         # Extract play names from parser
         play_names = list(parser.plays().keys())
@@ -197,7 +201,9 @@ class LogParserService:
             tmp_path = tmp_file.name
 
         try:
-            log_parser = Logs(log_file=tmp_path)
+            with open(os.devnull, "w") as devnull:
+                with contextlib.redirect_stdout(devnull):
+                    log_parser = Logs(log_file=tmp_path)
 
             # Collect all hosts and plays from all parsed plays
             all_hosts: dict[str, ParsedHost] = {}
@@ -256,8 +262,6 @@ class LogParserService:
 
         finally:
             # Clean up temp file
-            import os
-
             try:
                 os.unlink(tmp_path)
             except OSError:
@@ -585,5 +589,51 @@ def determine_status(host: ParsedHost) -> str:
     if host.failed > 0 or host.unreachable > 0:
         return "failed"
     if host.changed > 0:
+        return "changed"
+    return "ok"
+
+
+def compute_play_host_counts(
+    tasks: list[ParsedTask],
+) -> dict[tuple[str, str], dict[str, int]]:
+    """
+    Compute per-play, per-host task status counts from parsed tasks.
+
+    Args:
+        tasks: List of ParsedTask objects with per-host results
+
+    Returns:
+        Dict mapping (play_name, hostname) -> {"ok": N, "changed": N, "failed": N}
+    """
+    counts: dict[tuple[str, str], dict[str, int]] = {}
+
+    for task in tasks:
+        for result in task.results:
+            key = (task.play_name, result.hostname)
+            if key not in counts:
+                counts[key] = {"ok": 0, "changed": 0, "failed": 0}
+
+            status = result.status.lower()
+            if status in ("failed", "fatal", "unreachable"):
+                counts[key]["failed"] += 1
+            elif status == "changed":
+                counts[key]["changed"] += 1
+            elif status == "ok":
+                counts[key]["ok"] += 1
+            # skipping, ignored, rescued not counted in the 3-field summary
+
+    return counts
+
+
+def determine_play_status(ok: int, changed: int, failed: int) -> str:
+    """
+    Determine play status from per-play task counts.
+
+    Returns:
+        'failed' if any failed tasks, 'changed' if any changed, else 'ok'
+    """
+    if failed > 0:
+        return "failed"
+    if changed > 0:
         return "changed"
     return "ok"
