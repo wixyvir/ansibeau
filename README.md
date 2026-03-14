@@ -2,6 +2,10 @@
 
 A modern web application for visualizing Ansible playbook execution results with a clean, professional interface.
 
+## Demo
+
+<video src="doc/demo.mp4" controls width="100%"></video>
+
 ## Overview
 
 Ansibeau provides DevOps teams and system administrators with an intuitive way to monitor and understand Ansible playbook execution results. Instead of parsing through terminal logs, users can see hosts, plays, and task summaries in a beautifully designed dark-mode interface.
@@ -11,9 +15,12 @@ Ansibeau provides DevOps teams and system administrators with an intuitive way t
 - **Visual Host Overview**: Display all hosts with their associated plays
 - **Play Status Tracking**: Color-coded status indicators (OK, Changed, Failed)
 - **Task Summaries**: Detailed task counts for each play execution
+- **Task Details**: Expandable task lists with failure messages and JSON syntax highlighting
+- **Log Submission**: Upload logs via paste or file upload with title input
+- **Token Authentication**: Secure API access with Bearer token authentication
 - **Responsive Design**: Works seamlessly on desktop, tablet, and mobile
 - **Dark Mode UI**: Terminal-friendly aesthetic with excellent contrast
-- **Log Management**: Upload and organize multiple Ansible execution logs
+- **Docker Deployment**: Production-ready multi-stage Docker builds with CI/CD
 
 ## Technology Stack
 
@@ -24,8 +31,8 @@ Ansibeau provides DevOps teams and system administrators with an intuitive way t
 - Lucide React for icons
 
 ### Backend
-- Django 5.2 with Django REST Framework
-- Python 3.12+
+- Django 5.0 with Django REST Framework
+- Python 3.11+
 - SQLite (development) / PostgreSQL (production)
 - Poetry for dependency management
 
@@ -33,7 +40,7 @@ Ansibeau provides DevOps teams and system administrators with an intuitive way t
 
 ### Prerequisites
 - Node.js 18+ and npm
-- Python 3.12+
+- Python 3.11+
 - Poetry (install via `curl -sSL https://install.python-poetry.org | python3 -`)
 
 ### Frontend Setup
@@ -65,9 +72,14 @@ ansibeau/
 │   ├── docker-build.yml   # Docker build & push to GHCR
 │   └── python-lint.yml    # Python linting
 │
+├── doc/                   # Documentation assets
+│   └── demo.mp4           # Demo screencast
+│
 ├── frontend/              # React + TypeScript frontend
 │   ├── src/
 │   │   ├── components/    # React components
+│   │   ├── pages/         # Page components (LogPage, SubmitPage)
+│   │   ├── services/      # API client
 │   │   ├── types/         # TypeScript definitions
 │   │   └── App.tsx        # Main app component
 │   └── package.json
@@ -122,16 +134,22 @@ Log (uploaded Ansible log file)
 - Name, order, status, failure message
 - Supports all Ansible statuses (ok, changed, failed, fatal, skipping, etc.)
 
+**Token**: API authentication tokens
+- Value, status (active/inactive), optional expiration, comment
+- Managed via Django admin
+
 ## Current Status
 
-**Version 0.4.0** - Docker & CI/CD Complete
+**Version 0.6.0** - Token Authentication
 
 ✅ Implemented:
 - Complete frontend UI with responsive design
 - Django backend with REST Framework
-- Database models (Log, Host, Play, Task)
+- Database models (Log, Host, Play, Task, Token)
 - Ansible log parsing (raw stdout and timestamped formats)
-- Task-level details with failure messages
+- Task-level details with failure messages and JSON syntax highlighting
+- Frontend log submission page (paste or file upload)
+- Token-based API authentication (Bearer tokens)
 - Django admin interface with custom filters
 - Docker multi-stage builds (api, web containers)
 - Docker Compose orchestration with PostgreSQL
@@ -139,10 +157,9 @@ Log (uploaded Ansible log file)
 - Environment variable configuration (python-decouple)
 
 📋 Planned:
-- Frontend log upload UI
 - Log list page with pagination
 - Search and filtering
-- User authentication
+- Enhanced API endpoints
 - Real-time updates
 
 ## Documentation
@@ -243,18 +260,12 @@ poetry run python manage.py migrate
 
 ## Future Roadmap
 
-### v0.5.0 - Frontend Enhancements
-- Log upload UI in frontend
-- Log list page with navigation
-- Loading states and error handling
-- Skeleton loaders
-
-### v0.6.0 - Enhanced API
+### v0.7.0 - Enhanced API
 - List all logs with pagination
 - Search and filter capabilities
 - Export functionality (JSON, CSV)
 
-### v0.7.0+ - Advanced Features
+### v0.8.0+ - Advanced Features
 - User authentication and authorization
 - Real-time updates via WebSockets
 - Email/Slack notifications
