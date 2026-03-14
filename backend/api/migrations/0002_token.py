@@ -5,26 +5,61 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('api', '0001_initial'),
+        ("api", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Token',
+            name="Token",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('value', models.CharField(db_index=True, help_text='The token string used in Authorization header', max_length=255, unique=True)),
-                ('status', models.CharField(choices=[('active', 'Active'), ('inactive', 'Inactive')], db_index=True, default='active', max_length=10)),
-                ('expires_at', models.DateTimeField(blank=True, help_text='Token expiration date. Null means no expiration.', null=True)),
-                ('comment', models.TextField(blank=True, help_text='Description or purpose of this token')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                (
+                    "value",
+                    models.CharField(
+                        db_index=True,
+                        help_text="The token string used in Authorization header",
+                        max_length=255,
+                        unique=True,
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[("active", "Active"), ("inactive", "Inactive")],
+                        db_index=True,
+                        default="active",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "expires_at",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="Token expiration date. Null means no expiration.",
+                        null=True,
+                    ),
+                ),
+                (
+                    "comment",
+                    models.TextField(
+                        blank=True, help_text="Description or purpose of this token"
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
             ],
             options={
-                'verbose_name': 'Token',
-                'verbose_name_plural': 'Tokens',
-                'ordering': ['-created_at'],
+                "verbose_name": "Token",
+                "verbose_name_plural": "Tokens",
+                "ordering": ["-created_at"],
             },
         ),
     ]
