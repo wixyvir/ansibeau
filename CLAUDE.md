@@ -114,7 +114,8 @@ frontend/src/
 ├── types/
 │   └── ansible.ts          # TypeScript type definitions
 ├── pages/
-│   └── LogPage.tsx         # Log detail page with hosts and plays
+│   ├── LogPage.tsx         # Log detail page with hosts and plays
+│   └── SubmitPage.tsx      # Log submission page (paste or file upload)
 ├── App.tsx                 # Main application component with routing
 ├── main.tsx                # React app entry point
 └── index.css               # Global styles and Tailwind directives
@@ -553,10 +554,12 @@ poetry run python manage.py runserver
 ### Frontend Data Flow
 
 The frontend fetches data from the backend API:
+- **Submit Page** (`/submit`): Submits log via `submitLog(title, rawContent)`, redirects to `/log/:id` on success
 - **Log Page** (`/log/:logId`): Fetches log with hosts and plays via `fetchLog(logId)`
 - **Task Lists**: Lazy-loaded via `fetchTasks(playId, status)` when expanding status sections
 - **Caching**: Tasks are cached in component state after first fetch
 - **Error States**: Connection errors and 404s are handled with user-friendly messages
+- **Routing**: `/` and unknown routes redirect to `/submit`
 
 ## Current Implementation
 
@@ -914,9 +917,8 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 ## Future Iterations
 
 ### v0.6.0 - Frontend Enhancements (Next)
-- **Log Upload UI**: Form to submit Ansible logs from frontend
+- **Log Upload UI**: `/submit` page with paste or file upload, title input, submit button with loading state, error display, redirects to `/log/<uuid>` on success
 - **Log List Page**: Display all logs with navigation
-- **Error Handling**: Display parsing errors to users
 - **Loading States**: Skeleton loaders during API calls
 
 ### v0.7.0 - Enhanced API
@@ -979,6 +981,7 @@ Access the admin at `http://localhost:8000/admin/` after creating a superuser.
 - [frontend/src/types/ansible.ts](frontend/src/types/ansible.ts) - TypeScript type definitions (Host, Play, Task, TaskSummary)
 - [frontend/src/services/api.ts](frontend/src/services/api.ts) - Backend API client (fetchLog, fetchTasks)
 - [frontend/src/pages/LogPage.tsx](frontend/src/pages/LogPage.tsx) - Log detail page with hosts grid
+- [frontend/src/pages/SubmitPage.tsx](frontend/src/pages/SubmitPage.tsx) - Log submission page (paste or file upload)
 - [frontend/src/components/CollapsibleTaskSection.tsx](frontend/src/components/CollapsibleTaskSection.tsx) - Expandable task list with lazy loading and JSON syntax highlighting
 - [frontend/src/components/PlayCard.tsx](frontend/src/components/PlayCard.tsx) - Individual play card with collapsible task sections
 - [frontend/src/components/PlayHeader.tsx](frontend/src/components/PlayHeader.tsx) - (Legacy) Play title and date component
