@@ -8,6 +8,7 @@ type InputMode = 'paste' | 'file';
 function SubmitPage() {
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
+  const [token, setToken] = useState(() => localStorage.getItem('ansibeau_token') || '');
   const [content, setContent] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<InputMode>('paste');
@@ -19,6 +20,14 @@ function SubmitPage() {
     document.title = 'Submit Log - Ansibeau';
     return () => { document.title = 'Ansibeau'; };
   }, []);
+
+  useEffect(() => {
+    if (token) {
+      localStorage.setItem('ansibeau_token', token);
+    } else {
+      localStorage.removeItem('ansibeau_token');
+    }
+  }, [token]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -41,7 +50,7 @@ function SubmitPage() {
     setSubmitting(true);
 
     try {
-      const log = await submitLog(title || 'Untitled Log', content);
+      const log = await submitLog(title || 'Untitled Log', content, token || undefined);
       navigate(`/log/${log.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'An unexpected error occurred';
@@ -72,6 +81,23 @@ function SubmitPage() {
               disabled={submitting}
               className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
             />
+          </div>
+
+          {/* API Token */}
+          <div className="mb-4">
+            <label htmlFor="token" className="block text-sm font-medium text-slate-300 mb-1">
+              API Token
+            </label>
+            <input
+              id="token"
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="Enter your API token"
+              disabled={submitting}
+              className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+            />
+            <p className="text-xs text-slate-500 mt-1">Token is saved locally in your browser</p>
           </div>
 
           {/* Input mode toggle */}
