@@ -583,7 +583,6 @@ class TokenAdmin(admin.ModelAdmin):
         "created_at",
     ]
 
-
     class Media:
         js = ("admin/js/token_generate.js",)
 
